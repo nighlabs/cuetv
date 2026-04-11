@@ -166,3 +166,14 @@ slog.Error("failed to advance queue",
 - Integration tests for key handler flows using an in-memory SQLite DB
 - Test SSE broker: subscription, unsubscription, event delivery, slow consumer handling
 - CI runs `go test ./... -v` on every PR
+
+---
+
+## Post-Change Review
+
+After completing any code changes, request a review from both the **Architect** and **Security Expert** roles defined in the root `CLAUDE.md` before considering the work done:
+
+1. **Architect review:** Verify package boundaries are respected (thin handlers, logic in services, no manual edits to `internal/db/`), broker isolation is maintained, and the change aligns with established decisions.
+2. **Security review:** Check for auth/authz correctness, input validation, injection risks, and real-time channel security — using the Security Review Output Format from the root `CLAUDE.md`.
+
+Do not mark a task as complete until both reviews pass with no unresolved issues.

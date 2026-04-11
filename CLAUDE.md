@@ -87,6 +87,27 @@ When making or reviewing design decisions, structural changes, or new feature pr
 - SSE connections are long-lived goroutines — flag if counts grow unexpectedly
 - If multi-VPS deployment is ever needed, the SSE broker and WebSocket hub will require a pub/sub backend (e.g. Redis) — this is a significant architectural change
 
+### Code Comments & Documentation
+
+All code — backend and frontend — must include comments sufficient for an engineer familiar with the stack to understand both **what** the code does and **why**. Uncommented code is a review blocker.
+
+**What to comment:**
+- Every exported function/type: a brief doc comment explaining its purpose, expected inputs, and behavior
+- Non-obvious control flow: why a particular approach was chosen, not just what it does
+- Business logic motivations: e.g. why a debounce exists, why a transaction is needed, why a field is validated a certain way
+- Edge cases and defensive checks: explain what scenario the check guards against
+- Constants and magic numbers: what they represent and why that value was chosen
+
+**What NOT to comment:**
+- Self-evident code (`i++`, simple assignments, obvious getters)
+- Restating the code in English — comments should add context the code itself cannot convey
+
+**Logging requirements:**
+- Use appropriate log levels consistently: `slog.Debug` for internal diagnostics (variable values, flow tracing), `slog.Info` for normal operations (server start, session created, connections), `slog.Warn` for recoverable issues (slow consumer dropped, retries), `slog.Error` for failures that need attention (DB errors, failed auth, panics)
+- Never log at `Info` level for something that is a warning or error, and vice versa
+- Every log statement must include enough structured context (session ID, user action, relevant IDs) to be useful in production debugging
+- Frontend: use `console.warn` / `console.error` appropriately for client-side issues; avoid `console.log` in production code
+
 ### ADR Format
 
 Document significant decisions using this format:

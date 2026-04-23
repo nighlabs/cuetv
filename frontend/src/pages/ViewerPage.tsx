@@ -40,7 +40,7 @@ export function ViewerPage() {
   const playerRef = useRef<YT.Player | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SSEClient | null>(null);
-  const [ytReady, setYtReady] = useState(false);
+  const [ytReady, setYtReady] = useState(() => !!window.YT);
   /**
    * Gates the first user interaction required by browser autoplay policy.
    * The play-button overlay is shown until the user clicks, after which
@@ -68,19 +68,19 @@ export function ViewerPage() {
     enabled: !!sessionId,
   });
 
-  // Load YouTube IFrame API
+  // Load YouTube IFrame API script if not already present. The callback
+  // is an external-system subscription (YT API notifying us it's ready),
+  // so setState inside the callback is correct — only the synchronous
+  // early-return case was moved to the useState initializer above.
   useEffect(() => {
-    if (window.YT) {
-      setYtReady(true);
-      return;
-    }
+    if (ytReady) return;
 
     window.onYouTubeIframeAPIReady = () => setYtReady(true);
 
     const script = document.createElement("script");
     script.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(script);
-  }, []);
+  }, [ytReady]);
 
   // Initialize player
   useEffect(() => {

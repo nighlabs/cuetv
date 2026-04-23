@@ -1,8 +1,46 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRoomConfig, updateRoomConfig } from "@/services/api";
 import { useSessionStore } from "@/stores/sessionStore";
 import type { UpdateRoomConfigRequest } from "@/types/api";
+
+/**
+ * A text input that buffers keystrokes locally and only fires the
+ * mutation on blur, preventing a PATCH request per character typed.
+ * Uses `key={serverValue}` from the parent to reset when the server
+ * value changes (e.g. another admin updates via WebSocket).
+ */
+function LabelInput({
+  initialValue,
+  serverValue,
+  placeholder,
+  className,
+  onCommit,
+}: {
+  initialValue: string;
+  serverValue: string;
+  placeholder: string;
+  className: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initialValue);
+
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== serverValue) {
+          onCommit(value);
+        }
+      }}
+      placeholder={placeholder}
+      maxLength={50}
+      className={className}
+    />
+  );
+}
 
 /**
  * Controls room marquee configuration (top and bottom marquee bars).
@@ -29,27 +67,6 @@ export function RoomConfigPanel() {
       queryClient.invalidateQueries({ queryKey: ["config", sessionId] });
     },
   });
-
-  /**
-   * Local state for label inputs. We buffer keystrokes here instead of
-   * calling `mutation.mutate()` on every `onChange`, which would send a
-   * PATCH request per character typed. The actual mutation fires on blur
-   * only when the value differs from the server state.
-   */
-  const [topLabel, setTopLabel] = useState(config?.topMarqueeLabel ?? "");
-  const [bottomLabel, setBottomLabel] = useState(
-    config?.bottomMarqueeLabel ?? "",
-  );
-
-  // Sync local label state when config changes from the server (e.g. another
-  // admin updates it via WebSocket, triggering a TanStack Query cache
-  // invalidation and refetch).
-  useEffect(() => {
-    if (config) {
-      setTopLabel(config.topMarqueeLabel);
-      setBottomLabel(config.bottomMarqueeLabel);
-    }
-  }, [config?.topMarqueeLabel, config?.bottomMarqueeLabel]);
 
   if (!config) return null;
 
@@ -91,18 +108,14 @@ export function RoomConfigPanel() {
         </div>
         {config.topMarqueeEnabled && (
           <>
-            <input
-              type="text"
-              value={topLabel}
-              onChange={(e) => setTopLabel(e.target.value)}
-              onBlur={() => {
-                if (topLabel !== config.topMarqueeLabel) {
-                  mutation.mutate({ topMarqueeLabel: topLabel });
-                }
-              }}
+            {/* key resets local state when server value changes */}
+            <LabelInput
+              key={config.topMarqueeLabel}
+              initialValue={config.topMarqueeLabel}
+              serverValue={config.topMarqueeLabel}
               placeholder="Label (e.g. Now Playing)"
-              maxLength={50}
               className={inputClass}
+              onCommit={(v) => mutation.mutate({ topMarqueeLabel: v })}
             />
             {/*
              * Source selector — controls whether the marquee displays the
@@ -153,18 +166,14 @@ export function RoomConfigPanel() {
         </div>
         {config.bottomMarqueeEnabled && (
           <>
-            <input
-              type="text"
-              value={bottomLabel}
-              onChange={(e) => setBottomLabel(e.target.value)}
-              onBlur={() => {
-                if (bottomLabel !== config.bottomMarqueeLabel) {
-                  mutation.mutate({ bottomMarqueeLabel: bottomLabel });
-                }
-              }}
+            {/* key resets local state when server value changes */}
+            <LabelInput
+              key={config.bottomMarqueeLabel}
+              initialValue={config.bottomMarqueeLabel}
+              serverValue={config.bottomMarqueeLabel}
               placeholder="Label (e.g. Up Next)"
-              maxLength={50}
               className={inputClass}
+              onCommit={(v) => mutation.mutate({ bottomMarqueeLabel: v })}
             />
             {/*
              * Source selector — controls whether the marquee displays the

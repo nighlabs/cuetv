@@ -2,7 +2,9 @@ FROM node:25-alpine AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm install instead of npm ci: the lockfile is generated on macOS ARM
+# and @emnapi optional native deps resolve differently on Linux x64.
+RUN npm install
 COPY . .
 RUN npm run build
 

@@ -174,3 +174,14 @@ frontend/
 - Test SSE and WebSocket client reconnection logic
 - Test YouTube URL validation utility
 - CI runs `npm test`, `eslint`, and `vite build` on every PR
+
+---
+
+## Post-Change Review
+
+After completing any code changes, request a review from both the **Architect** and **Security Expert** roles defined in the root `CLAUDE.md` before considering the work done:
+
+1. **Architect review:** Verify state management rules are followed (TanStack Query for server state, Zustand for client-only state), component boundaries are clean, and the change aligns with established decisions.
+2. **Security review:** Check for XSS risks (especially in marquee rendering and SSE/WebSocket message handling), auth token handling, input validation, and CORS configuration — using the Security Review Output Format from the root `CLAUDE.md`.
+
+Do not mark a task as complete until both reviews pass with no unresolved issues.

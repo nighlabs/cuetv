@@ -1,0 +1,35 @@
+services:
+  backend:
+    image: ghcr.io/cuetv/backend:main
+    restart: unless-stopped
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_PORTAL_PASSWORD=${ADMIN_PORTAL_PASSWORD}
+      - DATABASE_PATH=/data/cuetv.db
+      - PORT=8080
+      - ADMIN_TOKEN_DURATION=${ADMIN_TOKEN_DURATION:-168h}
+      - FRIEND_TOKEN_DURATION=${FRIEND_TOKEN_DURATION:-12h}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-10}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+    volumes:
+      - cuetv-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/cuetv/frontend:main
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  cuetv-data:

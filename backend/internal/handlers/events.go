@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -66,6 +68,22 @@ func (h *EventsHandler) SSEStream(w http.ResponseWriter, r *http.Request) {
 	// Send initial connection event
 	w.Write([]byte(broker.FormatSSEEvent("connected")))
 	flusher.Flush()
+
+	// Send the currently-playing video so late-joining viewers catch up
+	// immediately instead of waiting for the next admin command.
+	currentIndex, err := h.queries.GetCurrentIndex(r.Context(), sessionID)
+	if err == nil {
+		item, err := h.queries.GetQueueItemAtPosition(r.Context(), db.GetQueueItemAtPositionParams{
+			SessionID: sessionID,
+			Position:  currentIndex,
+		})
+		if err == nil {
+			w.Write([]byte(broker.FormatSSEEvent(fmt.Sprintf("load:%s", item.YoutubeVideoID))))
+			flusher.Flush()
+		} else if err != sql.ErrNoRows {
+			slog.Warn("failed to get current queue item for SSE catchup", "sessionId", sessionID, "err", err)
+		}
+	}
 
 	for {
 		select {

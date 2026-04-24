@@ -42,7 +42,7 @@ import { useState } from "react";
 export function AdminPage() {
   const { isAuthenticated, sessionId, friendKey, viewerToken, token } =
     useSessionStore();
-  const { wsConnected, setWsConnected } = useSocketStore();
+  const { wsConnected, setWsConnected, playbackState } = useSocketStore();
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocketClient | null>(null);
   const [copied, setCopied] = useState(false);
@@ -234,6 +234,7 @@ export function AdminPage() {
                     key={item.id}
                     item={item}
                     isCurrentlyPlaying={
+                      playbackState !== "idle" &&
                       config?.currentIndex === item.position
                     }
                   />

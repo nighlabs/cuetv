@@ -136,6 +136,20 @@ export function reorderQueue(sessionId: string, order: string[]) {
   });
 }
 
+/** Update the marquee text for a single queue item. PATCH /api/sessions/:id/queue/:itemId */
+export function updateQueueItemMarqueeText(
+  sessionId: string,
+  itemId: string,
+  marqueeText: string
+) {
+  const sid = encodeURIComponent(sessionId);
+  const iid = encodeURIComponent(itemId);
+  return request<void>(`/api/sessions/${sid}/queue/${iid}`, {
+    method: "PATCH",
+    body: JSON.stringify({ marqueeText }),
+  });
+}
+
 /** Delete a single item from the session queue. DELETE /api/sessions/:id/queue/:itemId */
 export function deleteQueueItem(sessionId: string, itemId: string) {
   const sid = encodeURIComponent(sessionId);

@@ -105,6 +105,7 @@ func New(cfg *config.Config, database *sql.DB) *chi.Mux {
 				r.Post("/queue", queueHandler.Add)
 				r.Patch("/queue", queueHandler.Reorder)
 				r.Delete("/queue/{itemId}", queueHandler.Delete)
+				r.Patch("/queue/{itemId}", queueHandler.UpdateMarqueeText)
 
 				r.Post("/playback", playbackHandler.Command)
 

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/cuetv/backend/internal/db"
 	"github.com/cuetv/backend/internal/middleware"
 	"github.com/cuetv/backend/internal/models"
 	"github.com/cuetv/backend/internal/services"
@@ -14,12 +15,16 @@ import (
 // QueueHandler handles HTTP requests for queue management operations.
 type QueueHandler struct {
 	queueService *services.QueueService
+	queries      *db.Queries
+	validator    middleware.TokenValidator
 }
 
 // NewQueueHandler creates a new QueueHandler with the given QueueService.
-func NewQueueHandler(queueService *services.QueueService) *QueueHandler {
+func NewQueueHandler(queueService *services.QueueService, queries *db.Queries, validator middleware.TokenValidator) *QueueHandler {
 	return &QueueHandler{
 		queueService: queueService,
+		queries:      queries,
+		validator:    validator,
 	}
 }
 
@@ -31,9 +36,8 @@ func (h *QueueHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := middleware.GetClaims(r)
-	if claims == nil || claims.SessionID != sessionID {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	// List is read-only — allow both JWT (admin/friend) and viewer token access
+	if !authorizeSessionRead(w, r, sessionID, h.queries, h.validator) {
 		return
 	}
 

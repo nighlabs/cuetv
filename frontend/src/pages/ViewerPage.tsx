@@ -60,6 +60,11 @@ export function ViewerPage() {
    */
   const [pendingVideoId, setPendingVideoId] = useState<string | null>(null);
 
+  /** Tracks whether the YT.Player has been created. Using state (not a ref)
+   *  so the overlay re-renders when the player is ready. Set via onReady
+   *  callback from the YT.Player constructor, not directly in an effect. */
+  const [playerCreated, setPlayerCreated] = useState(false);
+
   const [queueEnded, setQueueEnded] = useState(false);
   /**
    * Prevents duplicate video-ended signals for the same video.
@@ -104,10 +109,14 @@ export function ViewerPage() {
   useEffect(() => {
     if (!ytReady || !userClicked || !pendingVideoId || !playerContainerRef.current || playerRef.current) return;
 
+    // Capture the video ID before clearing — the player constructor needs it
+    // but we must not call setState synchronously inside the effect.
+    const videoId = pendingVideoId;
+
     playerRef.current = new window.YT.Player(playerContainerRef.current, {
       width: "100%",
       height: "100%",
-      videoId: pendingVideoId,
+      videoId,
       playerVars: {
         autoplay: 1,
         controls: 0,
@@ -116,6 +125,11 @@ export function ViewerPage() {
         showinfo: 0,
       },
       events: {
+        // onReady fires asynchronously once the player is fully initialized —
+        // this is an external system callback, so setState here is safe.
+        onReady: () => {
+          setPlayerCreated(true);
+        },
         onStateChange: (event: YT.OnStateChangeEvent) => {
           if (
             event.data === window.YT.PlayerState.ENDED &&
@@ -129,9 +143,6 @@ export function ViewerPage() {
         },
       },
     });
-
-    // Clear pending — it's been consumed by the player creation
-    setPendingVideoId(null);
   }, [ytReady, userClicked, pendingVideoId, sessionId, viewerToken]);
 
   /**
@@ -212,7 +223,7 @@ export function ViewerPage() {
   };
 
   // Show the overlay until the user has clicked AND the player has been created
-  const showOverlay = !userClicked || (!playerRef.current && !pendingVideoId);
+  const showOverlay = !userClicked || (!playerCreated && !pendingVideoId);
 
   return (
     <div className="relative h-screen w-screen bg-black">

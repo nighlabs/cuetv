@@ -16,6 +16,11 @@ type ReorderQueueRequest struct {
 	Order []string `json:"order"`
 }
 
+// UpdateMarqueeTextRequest is the payload for updating a queue item's marquee text.
+type UpdateMarqueeTextRequest struct {
+	MarqueeText string `json:"marqueeText"`
+}
+
 // QueueItemResponse represents a single video in the session queue as returned
 // by the API.
 type QueueItemResponse struct {

@@ -37,17 +37,23 @@ func New(cfg *config.Config, database *sql.DB) *chi.Mux {
 	// Handlers — thin HTTP layer, delegates to services
 	authHandler := handlers.NewAuthHandler(authService)
 	sessionHandler := handlers.NewSessionHandler(sessionService, authService)
-	queueHandler := handlers.NewQueueHandler(queueService)
-	configHandler := handlers.NewConfigHandler(configService)
+	queueHandler := handlers.NewQueueHandler(queueService, queries, authService)
+	configHandler := handlers.NewConfigHandler(configService, queries, authService)
 	eventsHandler := handlers.NewEventsHandler(sseBroker, queries)
-	// Parse allowed origins for WebSocket origin validation
+	// Parse allowed origins for WebSocket origin validation. The nhooyr.io/websocket
+	// library's OriginPatterns expects host[:port] patterns (e.g. "localhost:3000"),
+	// not full URLs, so we strip the scheme from ALLOWED_ORIGINS.
 	var wsOrigins []string
 	if cfg.AllowedOrigins != "" {
 		for _, o := range strings.Split(cfg.AllowedOrigins, ",") {
 			o = strings.TrimSpace(o)
-			if o != "" {
-				wsOrigins = append(wsOrigins, o)
+			if o == "" {
+				continue
 			}
+			// Strip scheme (http:// or https://) to get host:port pattern
+			o = strings.TrimPrefix(o, "https://")
+			o = strings.TrimPrefix(o, "http://")
+			wsOrigins = append(wsOrigins, o)
 		}
 	}
 	wsHandler := handlers.NewWebSocketHandler(wsHub, authService, wsOrigins)
@@ -85,20 +91,24 @@ func New(cfg *config.Config, database *sql.DB) *chi.Mux {
 			// Video ended - viewer token auth via query param
 			r.Post("/video-ended", playbackHandler.VideoEnded)
 
-			// Authenticated endpoints
+			// Read-only endpoints — accept either JWT or viewer token,
+			// so both admin and viewer pages can fetch queue/config.
+			r.Get("/queue", queueHandler.List)
+			r.Get("/config", configHandler.Get)
+
+			// Write endpoints — require JWT auth
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Auth(authService))
 
 				r.Get("/", sessionHandler.Get)
 
-				r.Get("/queue", queueHandler.List)
 				r.Post("/queue", queueHandler.Add)
 				r.Patch("/queue", queueHandler.Reorder)
 				r.Delete("/queue/{itemId}", queueHandler.Delete)
+				r.Patch("/queue/{itemId}", queueHandler.UpdateMarqueeText)
 
 				r.Post("/playback", playbackHandler.Command)
 
-				r.Get("/config", configHandler.Get)
 				r.Patch("/config", configHandler.Update)
 			})
 		})

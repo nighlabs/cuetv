@@ -1,8 +1,8 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { deleteQueueItem } from "@/services/api";
+import { deleteQueueItem, updateQueueItemMarqueeText } from "@/services/api";
 import { getThumbnailUrl } from "@/services/youtubeValidation";
 import { useSessionStore } from "@/stores/sessionStore";
 import type { QueueItem as QueueItemType } from "@/types/api";
@@ -17,9 +17,9 @@ interface QueueItemProps {
 }
 
 /**
- * A single queue item row. Wrapped in React.memo to prevent unnecessary
- * re-renders during drag-and-drop operations, since only the dragged item
- * and its new neighbors actually change.
+ * A single queue item row with inline marquee text editing.
+ * Wrapped in React.memo to prevent unnecessary re-renders during
+ * drag-and-drop operations.
  */
 export const QueueItemComponent = memo(function QueueItemComponent({
   item,
@@ -27,9 +27,18 @@ export const QueueItemComponent = memo(function QueueItemComponent({
 }: QueueItemProps) {
   const sessionId = useSessionStore((s) => s.sessionId);
   const queryClient = useQueryClient();
+  const [marqueeText, setMarqueeText] = useState(item.marqueeText);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteQueueItem(sessionId!, item.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue", sessionId] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (text: string) =>
+      updateQueueItemMarqueeText(sessionId!, item.id, text),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue", sessionId] });
     },
@@ -73,13 +82,24 @@ export const QueueItemComponent = memo(function QueueItemComponent({
       <img
         src={getThumbnailUrl(item.youtubeVideoId)}
         alt=""
-        className="h-12 w-16 rounded object-cover"
+        className="h-12 w-16 shrink-0 rounded object-cover"
       />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-300">
-          {item.marqueeText || item.youtubeVideoId}
-        </p>
+        {/* Inline editable marquee text — commits on blur */}
+        <input
+          type="text"
+          value={marqueeText}
+          onChange={(e) => setMarqueeText(e.target.value)}
+          onBlur={() => {
+            if (marqueeText !== item.marqueeText) {
+              updateMutation.mutate(marqueeText);
+            }
+          }}
+          placeholder="Marquee text..."
+          maxLength={500}
+          className="w-full bg-transparent text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none"
+        />
         {isCurrentlyPlaying && (
           <p className="text-xs text-blue-400">Now Playing</p>
         )}

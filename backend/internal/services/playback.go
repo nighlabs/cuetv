@@ -45,7 +45,10 @@ func NewPlaybackService(queries *db.Queries, sseBroker *broker.SSEBroker, wsHub 
 func (s *PlaybackService) Command(ctx context.Context, sessionID, command string) error {
 	switch command {
 	case "play":
-		s.sseBroker.Broadcast(sessionID, "play")
+		// Load the current video if this is the first play command for the
+		// session — viewers need a video ID before playVideo() can succeed.
+		// Subsequent play commands just resume the already-loaded video.
+		return s.playOrLoad(ctx, sessionID)
 	case "pause":
 		s.sseBroker.Broadcast(sessionID, "pause")
 	case "next":
@@ -78,6 +81,39 @@ func (s *PlaybackService) VideoEnded(ctx context.Context, sessionID string) erro
 	s.mu.Unlock()
 
 	return s.advance(ctx, sessionID, 1)
+}
+
+// playOrLoad sends the current video to viewers. If a video is at the current
+// queue position, it broadcasts a load:{videoId} event so the player loads it.
+// If no video is at the current position (empty queue), it broadcasts a plain
+// "play" event as a resume signal.
+func (s *PlaybackService) playOrLoad(ctx context.Context, sessionID string) error {
+	currentIndex, err := s.queries.GetCurrentIndex(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("getting current index: %w", err)
+	}
+
+	item, err := s.queries.GetQueueItemAtPosition(ctx, db.GetQueueItemAtPositionParams{
+		SessionID: sessionID,
+		Position:  currentIndex,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No video at current position — just send a resume signal
+			s.sseBroker.Broadcast(sessionID, "play")
+			slog.Debug("play command broadcast (no video loaded)", "sessionId", sessionID)
+			return nil
+		}
+		return fmt.Errorf("getting current queue item: %w", err)
+	}
+
+	// Video exists at current position — load it on all viewers
+	s.sseBroker.Broadcast(sessionID, fmt.Sprintf("load:%s", item.YoutubeVideoID))
+	s.broadcastQueueUpdated(sessionID)
+	s.broadcastConfigUpdated(sessionID)
+
+	slog.Debug("play command broadcast with video load", "sessionId", sessionID, "videoId", item.YoutubeVideoID)
+	return nil
 }
 
 // advance moves the queue position by delta (typically +1 for next, -1 for
@@ -124,8 +160,10 @@ func (s *PlaybackService) advance(ctx context.Context, sessionID string, delta i
 	// Broadcast to viewers via SSE
 	s.sseBroker.Broadcast(sessionID, fmt.Sprintf("load:%s", item.YoutubeVideoID))
 
-	// Broadcast to admins via WebSocket
+	// Broadcast to admins via WebSocket — both queue and config changed
+	// since currentIndex moved to a new position
 	s.broadcastQueueUpdated(sessionID)
+	s.broadcastConfigUpdated(sessionID)
 
 	slog.Info("playback advanced",
 		"sessionId", sessionID,
@@ -141,5 +179,12 @@ func (s *PlaybackService) advance(ctx context.Context, sessionID string, delta i
 // connected to the given session.
 func (s *PlaybackService) broadcastQueueUpdated(sessionID string) {
 	msg := []byte(`{"type":"queue:updated"}`)
+	s.wsHub.Broadcast(sessionID, msg)
+}
+
+// broadcastConfigUpdated sends a config:updated WebSocket message so admins
+// refetch room config (e.g. when currentIndex changes on next/prev).
+func (s *PlaybackService) broadcastConfigUpdated(sessionID string) {
+	msg := []byte(`{"type":"config:updated"}`)
 	s.wsHub.Broadcast(sessionID, msg)
 }

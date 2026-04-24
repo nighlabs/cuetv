@@ -106,10 +106,12 @@ export function getSession(sessionId: string) {
   return request<SessionResponse>(`/api/sessions/${sid}`);
 }
 
-/** Fetch the full queue for a session. GET /api/sessions/:id/queue */
-export function getQueue(sessionId: string) {
+/** Fetch the full queue for a session. GET /api/sessions/:id/queue
+ *  Accepts an optional viewer token for unauthenticated viewer access. */
+export function getQueue(sessionId: string, viewerToken?: string) {
   const sid = encodeURIComponent(sessionId);
-  return request<QueueItem[]>(`/api/sessions/${sid}/queue`);
+  const tokenParam = viewerToken ? `?token=${encodeURIComponent(viewerToken)}` : "";
+  return request<QueueItem[]>(`/api/sessions/${sid}/queue${tokenParam}`);
 }
 
 /** Add a YouTube video to the session queue. POST /api/sessions/:id/queue */
@@ -131,6 +133,20 @@ export function reorderQueue(sessionId: string, order: string[]) {
   return request<void>(`/api/sessions/${sid}/queue`, {
     method: "PATCH",
     body: JSON.stringify({ order }),
+  });
+}
+
+/** Update the marquee text for a single queue item. PATCH /api/sessions/:id/queue/:itemId */
+export function updateQueueItemMarqueeText(
+  sessionId: string,
+  itemId: string,
+  marqueeText: string
+) {
+  const sid = encodeURIComponent(sessionId);
+  const iid = encodeURIComponent(itemId);
+  return request<void>(`/api/sessions/${sid}/queue/${iid}`, {
+    method: "PATCH",
+    body: JSON.stringify({ marqueeText }),
   });
 }
 
@@ -164,10 +180,12 @@ export function signalVideoEnded(sessionId: string, viewerToken: string) {
   );
 }
 
-/** Fetch the room configuration for a session. GET /api/sessions/:id/config */
-export function getRoomConfig(sessionId: string) {
+/** Fetch the room configuration for a session. GET /api/sessions/:id/config
+ *  Accepts an optional viewer token for unauthenticated viewer access. */
+export function getRoomConfig(sessionId: string, viewerToken?: string) {
   const sid = encodeURIComponent(sessionId);
-  return request<RoomConfig>(`/api/sessions/${sid}/config`);
+  const tokenParam = viewerToken ? `?token=${encodeURIComponent(viewerToken)}` : "";
+  return request<RoomConfig>(`/api/sessions/${sid}/config${tokenParam}`);
 }
 
 /** Update the room configuration for a session. PATCH /api/sessions/:id/config */

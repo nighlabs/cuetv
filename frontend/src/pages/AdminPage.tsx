@@ -42,7 +42,7 @@ import { useState } from "react";
 export function AdminPage() {
   const { isAuthenticated, sessionId, friendKey, viewerToken, token } =
     useSessionStore();
-  const { wsConnected, setWsConnected } = useSocketStore();
+  const { wsConnected, setWsConnected, playbackState } = useSocketStore();
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocketClient | null>(null);
   const [copied, setCopied] = useState(false);
@@ -197,12 +197,13 @@ export function AdminPage() {
           </div>
         )}
 
-        {/* Viewer URL */}
+        {/* Viewer URL — includes the viewer token as a query param so the
+          viewer page can authenticate SSE connections and fetch queue/config. */}
         {viewerToken && sessionId && (
           <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
             <p className="text-xs text-zinc-400">Viewer URL</p>
             <p className="truncate text-sm text-blue-400">
-              {window.location.origin}/viewer/{sessionId}
+              {window.location.origin}/viewer/{sessionId}?token={viewerToken}
             </p>
           </div>
         )}
@@ -233,6 +234,7 @@ export function AdminPage() {
                     key={item.id}
                     item={item}
                     isCurrentlyPlaying={
+                      playbackState !== "idle" &&
                       config?.currentIndex === item.position
                     }
                   />

@@ -122,6 +122,21 @@ func (s *QueueService) Reorder(ctx context.Context, sessionID string, order []st
 
 	qtx := s.queries.WithTx(tx)
 
+	// Find the currently-playing item's ID so we can track it through
+	// the reorder and update currentIndex to its new position.
+	currentIndex, err := qtx.GetCurrentIndex(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("getting current index: %w", err)
+	}
+	currentItem, err := qtx.GetQueueItemAtPosition(ctx, db.GetQueueItemAtPositionParams{
+		SessionID: sessionID,
+		Position:  currentIndex,
+	})
+	var currentItemID string
+	if err == nil {
+		currentItemID = currentItem.ID
+	}
+
 	for i, itemID := range order {
 		err := qtx.UpdateQueueItemPosition(ctx, db.UpdateQueueItemPositionParams{
 			Position:  int64(i),
@@ -133,12 +148,34 @@ func (s *QueueService) Reorder(ctx context.Context, sessionID string, order []st
 		}
 	}
 
+	// Update currentIndex to follow the currently-playing item to its
+	// new position. Without this, reordering would cause the "Now Playing"
+	// highlight to drift to a different video.
+	if currentItemID != "" {
+		for i, itemID := range order {
+			if itemID == currentItemID {
+				if int64(i) != currentIndex {
+					err := qtx.UpdateCurrentIndex(ctx, db.UpdateCurrentIndexParams{
+						CurrentIndex: int64(i),
+						SessionID:    sessionID,
+					})
+					if err != nil {
+						return fmt.Errorf("updating current index after reorder: %w", err)
+					}
+				}
+				break
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing reorder: %w", err)
 	}
 
 	slog.Info("queue reordered", "sessionId", sessionID, "itemCount", len(order))
 	s.broadcastQueueUpdated(sessionID)
+	// Also broadcast config:updated since currentIndex may have changed
+	s.broadcastConfigUpdated(sessionID)
 	return nil
 }
 
@@ -158,9 +195,43 @@ func (s *QueueService) Delete(ctx context.Context, sessionID, itemID string) err
 	return nil
 }
 
+// UpdateMarqueeText updates the marquee text for a single queue item and
+// broadcasts a queue:updated event to all connected admins.
+func (s *QueueService) UpdateMarqueeText(ctx context.Context, sessionID, itemID, marqueeText string) error {
+	// Verify the item belongs to this session
+	_, err := s.queries.GetQueueItem(ctx, db.GetQueueItemParams{
+		ID:        itemID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return fmt.Errorf("queue item not found: %w", err)
+	}
+
+	marqueeText = stripHTMLTags(marqueeText)
+
+	err = s.queries.UpdateQueueItemMarqueeText(ctx, db.UpdateQueueItemMarqueeTextParams{
+		MarqueeText: marqueeText,
+		ID:          itemID,
+	})
+	if err != nil {
+		return fmt.Errorf("updating marquee text: %w", err)
+	}
+
+	slog.Info("marquee text updated", "sessionId", sessionID, "itemId", itemID)
+	s.broadcastQueueUpdated(sessionID)
+	return nil
+}
+
 // broadcastQueueUpdated sends a queue:updated WebSocket message to all admins
 // connected to the given session, prompting their UIs to refetch the queue.
 func (s *QueueService) broadcastQueueUpdated(sessionID string) {
 	msg, _ := json.Marshal(map[string]string{"type": "queue:updated"})
+	s.wsHub.Broadcast(sessionID, msg)
+}
+
+// broadcastConfigUpdated sends a config:updated WebSocket message to all admins
+// so they refetch the room config (e.g. after currentIndex changes on reorder).
+func (s *QueueService) broadcastConfigUpdated(sessionID string) {
+	msg, _ := json.Marshal(map[string]string{"type": "config:updated"})
 	s.wsHub.Broadcast(sessionID, msg)
 }

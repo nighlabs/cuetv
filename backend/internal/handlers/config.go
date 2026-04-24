@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/cuetv/backend/internal/db"
 	"github.com/cuetv/backend/internal/middleware"
 	"github.com/cuetv/backend/internal/models"
 	"github.com/cuetv/backend/internal/services"
@@ -14,12 +15,16 @@ import (
 // ConfigHandler handles HTTP requests for session room configuration.
 type ConfigHandler struct {
 	configService *services.ConfigService
+	queries       *db.Queries
+	validator     middleware.TokenValidator
 }
 
 // NewConfigHandler creates a new ConfigHandler with the given ConfigService.
-func NewConfigHandler(configService *services.ConfigService) *ConfigHandler {
+func NewConfigHandler(configService *services.ConfigService, queries *db.Queries, validator middleware.TokenValidator) *ConfigHandler {
 	return &ConfigHandler{
 		configService: configService,
+		queries:       queries,
+		validator:     validator,
 	}
 }
 
@@ -31,7 +36,8 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !middleware.RequireAdmin(w, r, sessionID) {
+	// Get is read-only — allow both JWT (admin/friend) and viewer token access
+	if !authorizeSessionRead(w, r, sessionID, h.queries, h.validator) {
 		return
 	}
 

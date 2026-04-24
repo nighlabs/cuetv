@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/cuetv/backend/internal/db"
 	"github.com/cuetv/backend/internal/middleware"
 	"github.com/cuetv/backend/internal/models"
 	"github.com/cuetv/backend/internal/services"
@@ -14,12 +15,16 @@ import (
 // QueueHandler handles HTTP requests for queue management operations.
 type QueueHandler struct {
 	queueService *services.QueueService
+	queries      *db.Queries
+	validator    middleware.TokenValidator
 }
 
 // NewQueueHandler creates a new QueueHandler with the given QueueService.
-func NewQueueHandler(queueService *services.QueueService) *QueueHandler {
+func NewQueueHandler(queueService *services.QueueService, queries *db.Queries, validator middleware.TokenValidator) *QueueHandler {
 	return &QueueHandler{
 		queueService: queueService,
+		queries:      queries,
+		validator:    validator,
 	}
 }
 
@@ -31,9 +36,8 @@ func (h *QueueHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := middleware.GetClaims(r)
-	if claims == nil || claims.SessionID != sessionID {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	// List is read-only — allow both JWT (admin/friend) and viewer token access
+	if !authorizeSessionRead(w, r, sessionID, h.queries, h.validator) {
 		return
 	}
 
@@ -147,6 +151,43 @@ func (h *QueueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.queueService.Delete(r.Context(), sessionID, itemID); err != nil {
 		slog.Error("failed to delete queue item", "sessionId", sessionID, "itemId", itemID, "err", err)
 		http.Error(w, "failed to delete item", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateMarqueeText updates the marquee text for a single queue item.
+func (h *QueueHandler) UpdateMarqueeText(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+	itemID := chi.URLParam(r, "itemId")
+	if !isValidUUID(sessionID) || !isValidUUID(itemID) {
+		http.Error(w, "invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	claims := middleware.GetClaims(r)
+	if claims == nil || claims.SessionID != sessionID {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req models.UpdateMarqueeTextRequest
+	if err := decodeJSON(r, &req); err != nil {
+		slog.Warn("failed to decode update marquee text request", "sessionId", sessionID, "err", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.MarqueeText) > 500 {
+		slog.Warn("marquee text exceeds maximum length", "sessionId", sessionID, "length", len(req.MarqueeText))
+		http.Error(w, "marquee text must be 500 characters or less", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.queueService.UpdateMarqueeText(r.Context(), sessionID, itemID, req.MarqueeText); err != nil {
+		slog.Error("failed to update marquee text", "sessionId", sessionID, "itemId", itemID, "err", err)
+		http.Error(w, "failed to update marquee text", http.StatusInternalServerError)
 		return
 	}
 
